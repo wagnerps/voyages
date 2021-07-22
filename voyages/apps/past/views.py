@@ -13,6 +13,7 @@ from voyages.apps.past.models import *
 from name_search import NameSearchCache
 import itertools
 import json
+import os
 import uuid
 
 def _generate_table(query, table_params, data_adapter=None):
@@ -192,6 +193,9 @@ def store_audio(request, contrib_pk, name_pk, token):
         return HttpResponseBadRequest('Contribution not found')
     name_pk = int(name_pk)
     file_name = str(contrib_pk) + "_" + str(name_pk) + ".webm"
+    dir = settings.MEDIA_ROOT + '/audio/'
+    if not os.path.exists(dir):
+        os.makedirs(dir)
     with open('%s/%s/%s' % (settings.MEDIA_ROOT, 'audio', file_name), 'wb+') as destination:
         destination.write(request.body)
     return JsonResponse({ 'len': len(request.body) })
