@@ -1,5 +1,6 @@
 import itertools
 import json
+import os
 import uuid
 from builtins import str
 from datetime import date
@@ -255,6 +256,9 @@ def store_audio(request, contrib_pk, name_pk, token):
         return HttpResponseBadRequest('Contribution not found')
     name_pk = int(name_pk)
     file_name = str(contrib_pk) + "_" + str(name_pk) + ".webm"
+    dloads = settings.MEDIA_ROOT + '/audio/'
+    if not os.path.exists(dloads):
+        os.makedirs(dloads)
     with open('%s/%s/%s' % (settings.MEDIA_ROOT, 'audio', file_name),
               'wb+') as destination:
         destination.write(request.body)
