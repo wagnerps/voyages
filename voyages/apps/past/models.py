@@ -143,10 +143,13 @@ class EnslaverInfoAbstractBase(models.Model):
     text_id= models.CharField(max_length=255,null=True,unique=True)
     
     number_enslaved=models.IntegerField(null=True)
-        
+    
+    principal_location=models.ForeignKey('voyage_voyageplace',
+    							null=True,
+    							on_delete=models.CASCADE)
+    
     class Meta:
         abstract = True
-
 
 class EnslaverIdentity(EnslaverInfoAbstractBase):
 
