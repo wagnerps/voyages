@@ -1,7 +1,0 @@
-mysql -u voyages -pvoyagesPAST!Branch2021 -e 'delete from PAST.past_enslaverinrelation'
-mysql -u voyages -pvoyagesPAST!Branch2021 -e 'delete from PAST.past_enslavedinrelation'
-mysql -u voyages -pvoyagesPAST!Branch2021 -e 'delete from PAST.past_enslavervoyageconnection'
-mysql -u voyages -pvoyagesPAST!Branch2021 -e 'delete from PAST.past_enslaverrole'
-mysql -u voyages -pvoyagesPAST!Branch2021 -e 'delete from PAST.past_enslaveralias'
-mysql -u voyages -pvoyagesPAST!Branch2021 -e 'delete from PAST.past_enslaveridentity'
-mysql -u voyages -pvoyagesPAST!Branch2021 -e 'delete from PAST.past_enslavementrelation'
