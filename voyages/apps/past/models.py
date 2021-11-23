@@ -138,6 +138,8 @@ class EnslaverInfoAbstractBase(models.Model):
     will_value_dollars = models.CharField(max_length=12, null=True)
     will_court = models.CharField(max_length=12, null=True)
 
+    number_enslaved=models.IntegerField(null=True)
+
     class Meta:
         abstract = True
 
@@ -197,19 +199,13 @@ class EnslaverVoyageConnection(models.Model):
     Associates an enslaver with a voyage at some particular role.
     """
 
-    class Role:
-        CAPTAIN = 1
-        OWNER = 2
-        BUYER = 3
-        SELLER = 4
-
     enslaver_alias = models.ForeignKey('EnslaverAlias',
                                        null=False,
                                        on_delete=models.CASCADE)
     voyage = models.ForeignKey('voyage.Voyage',
                                null=False,
                                on_delete=models.CASCADE)
-    role = models.IntegerField(null=False)
+    role = models.CharField(max_length=255, null=False, blank=True, help_text="The role of the enslaver in this relation")
     # There might be multiple persons with the same role for the same voyage
     # and they can be ordered (ranked) using the following field.
     order = models.IntegerField(null=True)
@@ -381,7 +377,7 @@ class EnslavementRelation(models.Model):
     place = models.ForeignKey(Place, null=True, on_delete=models.SET_NULL)
     date = models.CharField(max_length=12, null=True,
         help_text="Date in MM,DD,YYYY format with optional fields.")
-    amount = models.DecimalField(null=True, decimal_places=2, max_digits=6)
+    amount = models.DecimalField(null=True, decimal_places=2, max_digits=10)
     voyage = models.ForeignKey(Voyage, related_name="+",
                                null=True, on_delete=models.CASCADE)
     source = models.ForeignKey(VoyageSources, related_name="+",
@@ -418,7 +414,7 @@ class EnslaverInRelation(models.Model):
         null=False,
         on_delete=models.CASCADE)
     enslaver_alias = models.ForeignKey(EnslaverAlias, null=False, on_delete=models.CASCADE)
-    role = models.IntegerField(null=False, help_text="The role of the enslaver in this relation")
+    role = models.CharField(max_length=255, null=False, blank=True, help_text="The role of the enslaver in this relation")
 
 
 _special_empty_string_fields = {
