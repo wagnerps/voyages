@@ -17,3 +17,5 @@ Documenting the workflow here for sanity's sake.
 
 	alter table voyages_jcm_nov23_enslaverdatamigration.past_enslaveridentity add column text_id varchar(255);
 	alter table voyages_jcm_nov23_enslaverdatamigration.past_enslaveralias add column text_id varchar(255);
+	alter table past_enslaveridentity add column principal_location_id int;
+	alter table past_enslaveridentity add foreign key (principal_location_id) references voyage_place(id);

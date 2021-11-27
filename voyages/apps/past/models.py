@@ -140,6 +140,8 @@ class EnslaverInfoAbstractBase(models.Model):
 
     number_enslaved=models.IntegerField(null=True)
     text_id=models.CharField(max_length=255,null=True)
+    
+    principal_location=models.ForeignKey(Place,null=False,on_delete=models.CASCADE)
 
     class Meta:
         abstract = True
