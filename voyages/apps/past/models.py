@@ -139,6 +139,7 @@ class EnslaverInfoAbstractBase(models.Model):
     will_court = models.CharField(max_length=12, null=True)
 
     number_enslaved=models.IntegerField(null=True)
+    text_id=models.CharField(max_length=255,null=True)
 
     class Meta:
         abstract = True
@@ -167,7 +168,7 @@ class EnslaverAlias(models.Model):
     """
     identity = models.ForeignKey(EnslaverIdentity, on_delete=models.CASCADE)
     alias = models.CharField(max_length=255)
-
+    text_id=models.CharField(max_length=255,null=True)
     class Meta:
         verbose_name = 'Enslaver alias'
 

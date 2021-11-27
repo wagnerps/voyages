@@ -1,0 +1,7 @@
+{
+  "user": "voyages",
+  "password": "voyages",
+  "database":"voyages_jcm_nov23_enslaverdatamigration",
+  "host": "voyages-mysql",
+  "auth_plugin":"mysql_native_password"
+}

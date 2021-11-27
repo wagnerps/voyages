@@ -10,10 +10,16 @@ conf=json.loads(t)
 
 cnx = mysql.connector.connect(**conf)
 cursor = cnx.cursor()
-role_id_dict={}
+
+d=open('../data/enslaverroles.json','r')
+t=d.read()
+d.close()
+enslaverroles=json.loads(t)
+
 
 '''for the captain and owner tables we:'''
 for role in [['captain','captain','captain'],['shipowner','owner','investor']]:
+	print(role[0])
 	
 	'''pull the all the records (rowids and names)'''
 	cursor.execute('select id,name from voyage_voyage'+role[0])
@@ -74,29 +80,34 @@ for role in [['captain','captain','captain'],['shipowner','owner','investor']]:
 			number_enslaved=cursor.fetchone()
 			number_enslaved=number_enslaved[0]
 			rolename=role[2]
+			
+			role_id=int(enslaverroles[rolename])
 		
-			if rolename in role_id_dict:
-				role_id=role_id_dict[rolename]
-			else:
-				role_id=None
-				while role_id==None:
-		
-					q="select id from past_enslaverrole where role='%s'" %rolename
-					cursor.execute(q)
-					role_id=cursor.fetchone()
-					if role_id==None:
-						q="insert into past_enslaverrole (role) values ('%s')" %rolename
-						cursor.execute(q)
-						cnx.commit()
-					else:
-						role_id=role_id[0]
+			'''no enslaver roles table for launch -- using hard-coded numerical values'''
+			#if rolename in role_id_dict:
+			#	role_id=role_id_dict[rolename]
+			#else:
+			#	role_id=None
+			#	while role_id==None:
+			#
+			#		q="select id from past_enslaverrole where role='%s'" %rolename
+			#		cursor.execute(q)
+			#		role_id=cursor.fetchone()
+			#		if role_id==None:
+			#			q="insert into past_enslaverrole (role) values ('%s')" %rolename
+			#			cursor.execute(q)
+			#			cnx.commit()
+			#		else:
+			#			role_id=role_id[0]'''
 			#print(name,first_active_year,last_active_year,voyage_ids,locations,number_enslaved,rolename)
 			
 			'''make a unique text id for the enslaver based on the dataset (IAM), their role (owner or captain), and their id in the owner or captain table at the time of the export'''
 			hash_id="_".join(["IAM",rolename,str(id)])
 			
 			'''now start pushing the values over to PAST enslaver tables'''
-			cursor.execute('insert into past_enslaveridentity (principal_alias,first_active_year,last_active_year,number_enslaved,text_id) values (%s,%s,%s,%s,%s)', (name,first_active_year,last_active_year,number_enslaved,hash_id))
+			'''excluding active year data...'''
+			#cursor.execute('insert into past_enslaveridentity (principal_alias,first_active_year,last_active_year,number_enslaved,text_id) values (%s,%s,%s,%s,%s)', (name,first_active_year,last_active_year,number_enslaved,hash_id))
+			cursor.execute('insert into past_enslaveridentity (principal_alias,text_id) values (%s,%s)', (name,hash_id))
 			cursor.execute("select max(id) from past_enslaveridentity")
 			identity_id=cursor.fetchone()
 			identity_id=identity_id[0]
@@ -111,7 +122,7 @@ for role in [['captain','captain','captain'],['shipowner','owner','investor']]:
 			'''and connect these new enslaver entities back to their voyages'''
 			for v_id in voyage_order:
 				e_order=voyage_order[v_id]
-				q="insert into past_enslavervoyageconnection (`role_id`,`order`,`enslaver_alias_id`,`voyage_id`) values (%d,%d,%d,%d)" %(role_id,e_order,alias_id,v_id)
+				q="insert into past_enslavervoyageconnection (`role`,`order`,`enslaver_alias_id`,`voyage_id`) values (%d,%d,%d,%d)" %(role_id,e_order,alias_id,v_id)
 				cursor.execute(q)
 				cnx.commit()
 			

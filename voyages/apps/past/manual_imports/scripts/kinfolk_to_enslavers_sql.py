@@ -13,6 +13,11 @@ and then in a second step importing from json to sql.
 and i don't think it can be made much prettier
 '''
 
+d=open('../data/enslaverroles.json','r')
+t=d.read()
+d.close()
+enslaverroles=json.loads(t)
+
 def cleanlist(l):
 	l=[i for i in l if i not in [' ','']]
 	return l
@@ -40,16 +45,16 @@ def create_or_update_enslaver(enslaver_name,number_enslaved_in_role,first_active
 	'''this function updates an enslaver if they do exist, creates them if they don't'''
 	'''check if the enslaver exists.'''
 	global enslaver_autoincrement
-	cursor.execute("select id,text_id,first_active_year,last_active_year,number_enslaved from past_enslaveridentity where principal_alias=%s and text_id like 'KIN_%'",(enslaver_name,))
+	cursor.execute("select id,text_id from past_enslaveridentity where principal_alias=%s and text_id like 'KIN_%'",(enslaver_name,))
 	result=cursor.fetchone()
 	
 	if result is not None:
 		'''if so, update the enslaver record with new information'''
-		identity_id,text_id,first_active_year,last_active_year,number_enslaved = result
+		identity_id,text_id = result
 		cursor.execute("select id from past_enslaveralias where identity_id=%s",(identity_id,))
 		result=cursor.fetchone()
 		alias_id=result[0]
-		if first_active_year is None:
+		'''if first_active_year is None:
 			cursor.execute("update past_enslaveridentity set first_active_year=%s where id=%s",(first_active_year_in_role,identity_id,))
 			cnx.commit()
 		elif first_active_year_in_role < first_active_year:
@@ -62,14 +67,14 @@ def create_or_update_enslaver(enslaver_name,number_enslaved_in_role,first_active
 			cursor.execute("update past_enslaveridentity set last_active_year=%s where id=%s",(last_active_year_in_role,identity_id))
 			cnx.commit()
 		cursor.execute("update past_enslaveridentity set number_enslaved=%s where id=%s",(number_enslaved+number_enslaved_in_role,identity_id))
-		cnx.commit()
+		cnx.commit()'''
 	else:
 		'''if not, create the enslaver identity and alias records with the values from the current role.'''
 		enslaver_autoincrement+=1
 		location_slug=str(enslaver_location)
 		textref_id="_".join(['KIN',location_slug,str(enslaver_autoincrement)])
-		cursor.execute("insert into past_enslaveridentity (principal_alias,first_active_year,last_active_year,number_enslaved,text_id,principal_location_id) values (%s,%s,%s,%s,%s,%s)",
-			(enslaver_name,first_active_year_in_role,last_active_year_in_role,number_enslaved_in_role,textref_id,enslaver_location))
+		cursor.execute("insert into past_enslaveridentity (principal_alias,text_id,principal_location_id) values (%s,%s,%s)",
+			(enslaver_name,textref_id,enslaver_location))
 		cnx.commit()
 		cursor.execute("select max(id) from past_enslaveridentity")
 		result=cursor.fetchone()
