@@ -386,7 +386,7 @@ class EnslavementRelation(models.Model):
     source = models.ForeignKey(VoyageSources, related_name="+",
                                null=True, on_delete=models.CASCADE)
     text_ref = models.CharField(max_length=255, null=False, blank=True, help_text="Source text reference")
-
+    transaction_id=models.IntegerField()
 
 class EnslavedInRelation(models.Model):
     """

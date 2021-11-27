@@ -23,7 +23,12 @@ cnx.commit()
 cursor.execute('delete from past_enslaveridentity')
 cnx.commit()
 
+cursor.execute('delete from past_enslavedinrelation')
+cnx.commit()
+
+cursor.execute('delete from past_enslavementrelation')
+cnx.commit()
+
+
 cnx.close()
-
-
 

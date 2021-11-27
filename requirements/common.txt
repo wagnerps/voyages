@@ -32,3 +32,4 @@ ijson==2.6.1
 requests==2.24.0
 mysql-connector-python==8.0.26
 protobuf==3.19.1
+pandas

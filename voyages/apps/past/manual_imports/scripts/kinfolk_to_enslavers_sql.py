@@ -1,8 +1,8 @@
+import mysql.connector
 import json
 import pandas as pd
 import re
 import csv
-import mysql.connector
 import time
 
 '''previously, i was transforming jennie's csv data into a gigantic dataframe and dictionaries
@@ -59,20 +59,6 @@ def create_or_update_enslaver(enslaver_name,enslaver_location):
 		cursor.execute("select id from past_enslaveralias where identity_id=%s",(identity_id,))
 		result=cursor.fetchone()
 		alias_id=result[0]
-		'''if first_active_year is None:
-			cursor.execute("update past_enslaveridentity set first_active_year=%s where id=%s",(first_active_year_in_role,identity_id,))
-			cnx.commit()
-		elif first_active_year_in_role < first_active_year:
-			cursor.execute("update past_enslaveridentity set first_active_year=%s where id=%s",(first_active_year_in_role,identity_id,))
-			cnx.commit()
-		if last_active_year is None:
-			cursor.execute("update past_enslaveridentity set last_active_year=%s where id=%s",(last_active_year_in_role,identity_id))
-			cnx.commit()
-		elif last_active_year_in_role > last_active_year:
-			cursor.execute("update past_enslaveridentity set last_active_year=%s where id=%s",(last_active_year_in_role,identity_id))
-			cnx.commit()
-		cursor.execute("update past_enslaveridentity set number_enslaved=%s where id=%s",(number_enslaved+number_enslaved_in_role,identity_id))
-		cnx.commit()'''
 	else:
 		'''if not, create the enslaver identity and alias records with the values from the current role.'''
 		enslaver_autoincrement+=1
@@ -128,8 +114,6 @@ def sync_ownersshippersconsignors(enslaver_name,enslaver_role,namecol,locationco
 	enslaved_ids=[int(i) for i in pd.unique(entries['Uniqueid'])]
 	voyage_ids=pd.unique(entries['VoyageID'])
 	
-	#print(voyage_ids)
-	
 	'''gather up some minimal data on the voyages this enslaver name-role pair was associated with
 	for the purposes of folding it into the enslaver relation'''
 	voyages={int(i):{} for i in voyage_ids}
@@ -164,34 +148,13 @@ def sync_ownersshippersconsignors(enslaver_name,enslaver_role,namecol,locationco
 	missing_voyage_ids=list(set(missing_voyage_ids))
 	voyage_ids=[int(i) for i in list(voyages.keys())]
 	
-	'''active_dates=[voyages[v_id]['date'] for v_id in voyages]
-	active_years=[int(i[-4:]) for i in active_dates if re.match('.*[0-9]{4}',i)]
-	if len(active_years)>0:
-		first_active_year_in_role=min(active_years)
-		last_active_year_in_role=max(active_years)
-	else:
-		first_active_year_in_role,last_active_year_in_role=[None,None]'''
-
-	
-	'''calculate the number of people enslaved by this person in this capacity
-	--in the future, obviously, we'd want to calculate this on the fly by accessing transaction and voyage data'''
-	#number_enslaved_in_role=len(enslaved_ids)
-	
 	identity_id,alias_id=create_or_update_enslaver(enslaver_name,enslaver_location)
 	
-	'''I could be wrong, but I think the most efficient way to do non-transaction (buy/sell) enslavement relations
-	is to use these enslavers'''
-	
-	'''because we have to group enslaved people by voyage *and* enslaver'''
+	''' we have to group enslaved people by voyage *and* enslaver'''
 
-	#role_id=getid('past_enslaverrole','role',enslaver_role)
 	role_id=int(enslaverroles[enslaver_role])
-	
-	#relation_type_id=getid('past_enslavementrelationtype','relation_type','transportation')
 	relation_type_id=int(enslavementrelationtypes['transportation'])
 	
-	#print(entries)
-	#print(voyage_ids)
 	for v_id in voyage_ids:
 		voyage_enslaved_ids=pd.unique(entries[entries['VoyageID']==v_id]['Uniqueid'])
 		sources=sources_df[sources_df['Uniqueid']==voyage_enslaved_ids[0]]
@@ -206,21 +169,17 @@ def sync_ownersshippersconsignors(enslaver_name,enslaver_role,namecol,locationco
 		
 		voyage_date=voyages[v_id]['date']
 		voyage_location=voyages[v_id]['location']
-		cursor.execute("insert into past_enslavementrelation (relation_type_id,date,text_ref,place_id,source_id,voyage_id) values (%s,%s,%s,%s,%s,%s)",
+		cursor.execute("insert into past_enslavementrelation (relation_type,date,text_ref,place_id,source_id,voyage_id) values (%s,%s,%s,%s,%s,%s)",
 			(relation_type_id,voyage_date,sourceA,voyage_location,sourceA_id,int(v_id)))
 		cnx.commit()
 		cursor.execute("select max(id) from past_enslavementrelation")
 		relation_id=cursor.fetchone()
 		relation_id=relation_id[0]
 		'''now link that relation to the enslaver'''
-		cursor.execute("insert into past_enslaverinrelation (role_id,enslaver_alias_id,transaction_id) values (%s,%s,%s)",
+		cursor.execute("insert into past_enslaverinrelation (role,enslaver_alias_id,transaction_id) values (%s,%s,%s)",
 			(role_id,alias_id,relation_id))
 		cnx.commit()
 		'''and now link each enslaved id here to this relation'''		
-		
-		#print(voyage_enslaved_ids)
-		
-		#print("BY VOYAGE",enslaver_name,relation_id,voyage_enslaved_ids)
 		
 		for e_id in voyage_enslaved_ids:
 			try:
@@ -254,11 +213,10 @@ def sync_buyersellers(enslaver_name,enslaver_role,namecol,locationcol):
 	enslaver_location=get_enslaverlocation(entries,locationcol)
 	
 	
-	#role_id=getid('past_enslaverrole','role',enslaver_role)
 	role_id=int(enslaverroles[enslaver_role])
 	number_enslaved_in_role=len(enslaved_ids)
 		
-	identity_id,alias_id=create_or_update_enslaver(enslaver_name,number_enslaved_in_role,first_active_year_in_role,last_active_year_in_role,enslaver_location)
+	identity_id,alias_id=create_or_update_enslaver(enslaver_name,enslaver_location)
 	
 	relationtype_id=int(enslavementrelationtypes['transaction'])
 	
@@ -296,17 +254,16 @@ def sync_buyersellers(enslaver_name,enslaver_role,namecol,locationcol):
 			
 			amount=transaction_entries['CaptivePrice'].values[0]
 			
-			cursor.execute("insert into past_enslavementrelation (relation_type_id,date,text_ref,place_id,source_id,transaction_id) values (%s,%s,%s,%s,%s,%s)",
+			cursor.execute("insert into past_enslavementrelation (relation_type,date,text_ref,place_id,source_id,transaction_id) values (%s,%s,%s,%s,%s,%s)",
 			(relationtype_id,transaction_date,sourceB,transaction_location_rowid,sourceB_id,transaction_id))
 			cnx.commit()
 			cursor.execute("select max(id) from past_enslavementrelation")
 			relation_id=cursor.fetchone()
 		relation_id=relation_id[0]
 		
-		cursor.execute("insert into past_enslaverinrelation (role_id,enslaver_alias_id,transaction_id) values (%s,%s,%s)",
+		cursor.execute("insert into past_enslaverinrelation (role,enslaver_alias_id,transaction_id) values (%s,%s,%s)",
 			(role_id,alias_id,relation_id))
 		
-		#print("BY TRANSACTION",enslaver_name,relation_id,enslaved_ids)
 		
 		for e_id in transaction_enslaved_ids:
 			try:
@@ -319,19 +276,12 @@ def sync_buyersellers(enslaver_name,enslaver_role,namecol,locationcol):
 
 
 
-print('a')
 d=open("dbcheckconf.json","r")
 t=d.read()
 d.close()
-print('b')
 conf=json.loads(t)
-print('c')
 cnx = mysql.connector.connect(**conf)
-print('d')
 cursor = cnx.cursor()
-print('e')
-
-
 
 
 
@@ -370,12 +320,6 @@ rolepairs_A=[
 enslaver_autoincrement=500000
 missing_enslaved_ids=[]
 missing_voyage_ids=[]
-
-'''for rolepair in rolepairs_A:
-	enslaver_names,role,namecol,locationcol=rolepair
-	print("fetching enslavers by role:",role)
-	for enslaver_name in enslaver_names:
-		sync_ownersshippersconsignors(enslaver_name,role,namecol,locationcol)'''
 
 rolepairs_B=[
 	[buyer_names,'buyer','BuyerName','BuyerLocation'],
