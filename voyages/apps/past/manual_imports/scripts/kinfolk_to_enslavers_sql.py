@@ -52,13 +52,12 @@ def create_or_update_enslaver(enslaver_name,enslaver_location):
 	global enslaver_autoincrement
 	cursor.execute("select id,text_id from past_enslaveridentity where principal_alias=%s and text_id like 'KIN_%'",(enslaver_name,))
 	result=cursor.fetchone()
-	
 	if result is not None:
 		'''if so, update the enslaver record with new information'''
 		identity_id,text_id = result
-		cursor.execute("select id from past_enslaveralias where identity_id=%s",(identity_id,))
+		cursor.execute("select id,text_id from past_enslaveralias where identity_id=%s",(identity_id,))
 		result=cursor.fetchone()
-		alias_id=result[0]
+		alias_id,textref_id=result
 	else:
 		'''if not, create the enslaver identity and alias records with the values from the current role.'''
 		enslaver_autoincrement+=1
@@ -75,6 +74,13 @@ def create_or_update_enslaver(enslaver_name,enslaver_location):
 		cursor.execute("select max(id) from past_enslaveralias")
 		result=cursor.fetchone()
 		alias_id=result[0]
+	
+	try:
+		print(enslaver_name)
+	except:
+		print('????')
+	
+	print(textref_id,identity_id)
 	return identity_id,alias_id
 
 
@@ -263,7 +269,6 @@ def sync_buyersellers(enslaver_name,enslaver_role,namecol,locationcol):
 		
 		cursor.execute("insert into past_enslaverinrelation (role,enslaver_alias_id,transaction_id) values (%s,%s,%s)",
 			(role_id,alias_id,relation_id))
-		
 		
 		for e_id in transaction_enslaved_ids:
 			try:
