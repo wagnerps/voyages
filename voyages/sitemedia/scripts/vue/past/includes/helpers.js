@@ -113,7 +113,7 @@ var voyageColumns = [
 
 function getColumnIndex(column) {
   var index = null;
-  allColumns.forEach(function(columnItem, columnIndex) {
+  allColumns[enslavedDataset].forEach(function(columnItem, columnIndex) {
     if (columnItem.data == column) {
       index = columnIndex;
       return true;
@@ -149,18 +149,40 @@ function processResponse(json, mainDatatable, fuzzySearch) {
     row.gender = gender;
 
     if (!row.ranking) {
-      row.ranking = '';
+      row.ranking = '1';
+    } else {
+      row.ranking++;
     }
+
+    if (row.enslavers_list) {
+      var enslaversList = {};
+      row.enslavers_list.forEach((value, index) => {
+        if (enslaversList[value.enslaver_name] === undefined) {
+          enslaversList[value.enslaver_name] = [];
+        }
+
+        enslaversList[value.enslaver_name].push(gettext(searchBar.enslaverRoles[value.enslaver_role]));
+      });
+      row.enslavers_list = enslaversList;
+    }
+
+    // source formatting
+    row.sources_raw = row.sources_list;
+    row.sources_list = getFormattedSourceInTable(
+      row.sources_list
+    );
 
     data.push(row);
   });
 
-  if (fuzzySearch) {
-    if (!mainDatatable.column(rankingIndex).visible()) {
-      mainDatatable.column(rankingIndex).visible(true);
+  if (rankingIndex !== null) {
+    if (fuzzySearch) {
+      if (!mainDatatable.column(rankingIndex).visible()) {
+        mainDatatable.column(rankingIndex).visible(true);
+      }
+    } else {
+      mainDatatable.column(rankingIndex).visible(false);
     }
-  } else {
-    mainDatatable.column(rankingIndex).visible(false);
   }
 
   return data;
@@ -201,6 +223,24 @@ function getVoyageFormattedSource(sources) {
     value += "<div><span class='source-title'>" + first + ": </span>";
     value += "<span class='source-content'>" + second + "</span></div>";
   });
+  return value;
+}
+
+function getFormattedSourceInTable(sources) {
+  var value = ""; // empty value string
+  try {
+    sources.forEach(function(source) {
+      value +=
+        "<div><span data-toggle='tooltip' data-placement='top' data-html='true' data-original-title='" +
+        source.full_ref +
+        "'>" +
+        source.text_ref +
+        "</span></div>";
+    });
+  }
+  catch(err) {
+    console.log(`Error in getFormattedSourceInTable: ${err.message}`);
+  }
   return value;
 }
 
@@ -269,7 +309,7 @@ function serializeFilter(filter) {
 }
 
 function searchAll(filter, filterData) {
-  var items = {};
+  var items = {enslaved_dataset: enslavedDataset};
   for (key1 in filter) {
     if (key1 !== "count") {
       for (key2 in filter[key1]) {
@@ -328,6 +368,34 @@ function searchAll(filter, filterData) {
 
                     item["searchTerm"] = searchTerm;
 
+                    // if it's a LanguageGroupVariable
+                  } else if (filter[key1][key2][key3].constructor.name === "LanguageGroupVariable") {
+                    var sortedSelections = filter[key1][key2][key3].value["searchTerm"].sort(sortNumber);
+                    var searchTerm = [];
+
+                    sortedSelections.forEach(function(selection) {
+                      var varName = filter[key1][key2][key3]["varName"];
+                      if (selection == filterData.treeselectOptions[varName][0].id) {
+                        // select all
+                        searchTerm = filterData.treeselectOptions[varName][0].languageGroupIds;
+                      } else {
+                        // country
+                        filterData.treeselectOptions[varName][0].children.forEach(function(country) {
+                          if (selection == country.id) {
+                            searchTerm = [...new Set([...searchTerm ,...country.languageGroupIds])];
+                          } else {
+                            country.children.forEach(function(languageGroup) {
+                              if (selection == languageGroup.id) {
+                                searchTerm = [...new Set([...searchTerm ,...languageGroup.languageGroupIds])];
+                              }
+                            });
+                          }
+                        });
+                      }
+                    });
+
+                    item["searchTerm"] = searchTerm;
+                    
                     // if it's a TreeselectVariable
                   } else if (filter[key1][key2][key3].constructor.name === "TreeselectVariable") {
                     var sortedSelections = filter[key1][key2][key3].value["searchTerm"].sort(sortNumber);
@@ -399,8 +467,8 @@ function searchAll(filter, filterData) {
                         searchTerm0 = filter[key1][key2][key3].value["searchTerm0"];
                       break;
                       case "is between":
-                        searchTerm0 = filter[key1][key2][key3].value["searchTerm0"];
-                        searchTerm1 = filter[key1][key2][key3].value["searchTerm1"];
+                        searchTerm0 = filter[key1][key2][key3].value["searchTerm0"] ?? searchTerm0;
+                        searchTerm1 = filter[key1][key2][key3].value["searchTerm1"] ?? searchTerm1;
                       break;
                     }
 
@@ -481,6 +549,34 @@ function getTreeselectLabel(currentVariable, searchTerms, treeselectOptions) {
           labels.push(treeselectOption.label);
         }
       });
+    });
+  } else if (currentVariable.constructor.name == "LanguageGroupVariable") {
+    treeselectOptions = treeselectOptions[currentVariable.varName][0];
+    searchTerms.forEach(function(searchTerm) {
+      if (searchTerm == treeselectOptions.id) {
+        // ALL SELECTED
+        labels.push(treeselectOptions.label);
+      } else {
+        if (treeselectOptions.children !== undefined) {
+          // COUNTRIES
+          countries = treeselectOptions.children;
+          countries.forEach(function(country) {
+            if (searchTerm == country.id) {
+              labels.push(country.label);
+            } else {
+              if (country.children !== undefined) {
+                // LANGUAGE GROUPS
+                languageGroups = country.children;
+                languageGroups.forEach(function(languageGroup) {
+                  if (searchTerm == languageGroup.id) {
+                    labels.push(languageGroup.label);
+                  }
+                });
+              }
+            }
+          });
+        }
+      }
     });
   } else if (currentVariable.constructor.name == "PlaceVariable") {
     treeselectOptions = treeselectOptions[currentVariable.varName][0];
@@ -650,7 +746,7 @@ var parsePlaces = function(response) {
   // fill broad regions
   for (key in data.broadRegions) {
     options[0].children.push({
-      id: data.broadRegions[key].order,
+      id: 'br'+data.broadRegions[key].order,
       label: data.broadRegions[key].broad_region,
       children: []
     });
@@ -660,7 +756,7 @@ var parsePlaces = function(response) {
   for (regionId in data.regions) {
     var broadRegion = data.regions[regionId].broad_region;
     for (broadRegionId in options[0].children) {
-      if (options[0].children[broadRegionId].id == broadRegion.order) {
+      if (options[0].children[broadRegionId].id == 'br'+broadRegion.order) {
         options[0].children[broadRegionId].children.push({
           id: data.regions[regionId].code,
           label: data.regions[regionId].region,
@@ -682,7 +778,7 @@ var parsePlaces = function(response) {
     var value = data.ports[portId].value;
     var label = data.ports[portId].port;
     var regionId = data.ports[portId].region.code;
-    var broadRegionId = data.ports[portId].region.broad_region.order;
+    var broadRegionId = 'br'+data.ports[portId].region.broad_region.order;
 
     // locate corresponding location in the options tree
     options[0].children.map(function(broadRegion) {
@@ -720,26 +816,36 @@ var parseLanguageGroups = function(response) {
       id: 0,
       code: 0,
       label: gettext("Select All"),
-      children: []
+      children: [],
+      languageGroupIds: [],
     }
   ];
 
   // fill countries
-  var countries = {};
+  var countries = [];
   $.each(response.data, function(id, languageGroup) {
-    countries[languageGroup.country] = languageGroup.country;
+    $.each(languageGroup.countries, (id, country) => {
+      countries.push(country);
+    });
   });
+  countries = [...new Set(countries)].sort()
+
   $.each(countries, function(key, country) {
     options[0].children.push({
       id: country,
       label: country,
-      children: []
+      children: [],
+      languageGroupIds: []
     });
   });
 
   // fill languageGroups
   $.each(response.data, function(id, languageGroup) {
     var label = languageGroup.name;
+    var languageGroupId = languageGroup.id;
+    if (options[0].languageGroupIds.indexOf(languageGroupId) === -1) {
+      options[0].languageGroupIds.push(languageGroupId);
+    }
     if (languageGroup.alts.length > 0) {
       var altNames = [];
       $.each(languageGroup.alts, function(id, altName) {
@@ -753,10 +859,26 @@ var parseLanguageGroups = function(response) {
       }
     }
     $.each(options[0].children, function(key, country) {
-      if (languageGroup.country == country.label) {
-        options[0].children[key].children.push({'id': id, 'label' : label, 'isDisabled': false});
-      }
+      $.each(languageGroup.countries, (index, languageGroupCountry) => {
+        if (languageGroupCountry == country.label) {
+          if (options[0].children[key].languageGroupIds.indexOf(languageGroupId) === -1) {
+            options[0].children[key].languageGroupIds.push(languageGroupId);
+          }
+          options[0].children[key].children.push({'id': key+'-'+languageGroupId, 'label' : label, 'isDisabled': false, languageGroupIds: [languageGroupId]});
+        }
+      });
     });
+  });
+  $.each(options[0].children, function(key, country) {
+    country.children.sort(function (a, b) {
+      if ( a.label < b.label ){
+        return -1;
+      }
+      if ( a.label > b.label ){
+        return 1;
+      }
+      return 0;
+    })
   });
 
   return options;
@@ -832,10 +954,12 @@ function refreshUi(filter, filterData, currentTab, tabData, options) {
         data: function(d) {
           if (d.order) {
             var rankingIndex = getColumnIndex('ranking');
-            var rankingVisible = $('#results_main_table').DataTable().column(rankingIndex).visible();
+            if (rankingIndex !== null) {
+              var rankingVisible = $('#results_main_table').DataTable().column(rankingIndex).visible();
 
-            if (fuzzySearch && !rankingVisible) {
-                d.order[0]['column'] = rankingIndex;
+              if (fuzzySearch && !rankingVisible) {
+                  d.order[0]['column'] = rankingIndex;
+              }
             }
 
             currentSearchObj.order_by = $.map(d.order, function(item) {
@@ -843,7 +967,7 @@ function refreshUi(filter, filterData, currentTab, tabData, options) {
                 ? mainDatatable.colReorder.order()[item.column]
                 : item.column;
               return {
-                columnName: allColumns[columnIndex].data,
+                columnName: allColumns[enslavedDataset][columnIndex].data,
                 direction: item.dir
               };
             });
@@ -902,7 +1026,7 @@ function refreshUi(filter, filterData, currentTab, tabData, options) {
       bFilter: false,
       processing: true,
       serverSide: true,
-      columns: allColumns,
+      columns: allColumns[enslavedDataset],
       stateSave: true,
       stateDuration: -1,
       initComplete: function() {
@@ -918,7 +1042,13 @@ function refreshUi(filter, filterData, currentTab, tabData, options) {
       displayColumnOrder(order);
     });
 
+    mainDatatable.on("column-visibility", function(e, settings, column, state, recalc) {
+      $('[data-toggle="tooltip"]').tooltip();
+      // initAudioActions();
+    });
+
     mainDatatable.on('draw', function(){
+      $('[data-toggle="tooltip"]').tooltip();
       initAudioActions();
     });
   }

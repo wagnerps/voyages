@@ -2,7 +2,7 @@ from __future__ import absolute_import, unicode_literals
 
 import operator
 import threading
-import unicodedata
+import unidecode
 from builtins import range, str
 from functools import reduce
 from django.conf import settings
@@ -11,8 +11,10 @@ from django.contrib.auth.models import User
 from django.db import models
 from django.db.models import (Case, CharField, F, Func, IntegerField, Q, Value, When)
 from django.db.models.expressions import Subquery, OuterRef
+from django.db.models.fields import TextField
 from django.db.models.functions import Coalesce, Concat, Length, Substr
 import Levenshtein_search
+import re
 
 from voyages.apps.voyage.models import Place, Voyage, VoyageSources
 from voyages.apps.common.validators import date_csv_field_validator
@@ -34,13 +36,8 @@ def strip_accents(text):
     :returns: The processed String.
     :rtype: String.
     """
-    try:
-        text = str(text, 'utf-8')
-    except (TypeError, NameError):  # unicode is a default on python 3
-        pass
-    text = unicodedata.normalize('NFD', text)
-    text = text.encode('ascii', 'ignore')
-    return str(text.lower())
+    text = unidecode.unidecode(text)
+    return text.replace(',', '').lower()
 
 
 class NameSearchCache:
@@ -49,6 +46,15 @@ class NameSearchCache:
     _index = None
     _name_key = {}
     _sound_recordings = {}
+    
+    @staticmethod
+    def get_composite_names(name):
+        yield name
+        parts = re.split("\\s*,\\s*|\\s+", name)
+        if len(parts) == 2:
+            yield parts[1] + " " + parts[0]
+        for part in parts:
+            yield part
 
     @classmethod
     def get_recordings(cls, names):
@@ -82,11 +88,12 @@ class NameSearchCache:
             q = Enslaved.objects.values_list('enslaved_id', 'documented_name',
                                              'name_first', 'name_second',
                                              'name_third')
+
             for item in q:
                 ns = {
-                    strip_accents(item[i])
-                    for i in range(1, 4)
-                    if item[i] is not None
+                    strip_accents(part)
+                    for i in range(1, len(item)) if item[i] is not None
+                    for part in NameSearchCache.get_composite_names(item[i])
                 }
                 all_names.update(ns)
                 item_0 = item[0]
@@ -220,6 +227,12 @@ class NamedModelAbstractBase(models.Model):
     id = models.IntegerField(primary_key=True)
     name = models.CharField(max_length=255)
 
+    def __str__(self):
+        return self.__unicode__()
+
+    def __unicode__(self):
+        return str(self.id) + ", " + self.name
+
     class Meta:
         abstract = True
 
@@ -228,11 +241,11 @@ class LanguageGroup(NamedModelAbstractBase):
     longitude = models.DecimalField("Longitude of point",
                                     max_digits=10,
                                     decimal_places=7,
-                                    null=False)
+                                    null=True)
     latitude = models.DecimalField("Latitude of point",
                                    max_digits=10,
                                    decimal_places=7,
-                                   null=False)
+                                   null=True)
 
 
 class ModernCountry(NamedModelAbstractBase):
@@ -245,10 +258,17 @@ class ModernCountry(NamedModelAbstractBase):
                                    decimal_places=7,
                                    null=False)
     languages = models.ManyToManyField(LanguageGroup)
+    
+    class Meta:
+        verbose_name = "Modern country"
+        verbose_name_plural = "Modern countries"
 
 
 class RegisterCountry(NamedModelAbstractBase):
-    pass
+    
+    class Meta:
+        verbose_name = "Register country"
+        verbose_name_plural = "Register countries"
 
 
 class AltLanguageGroupName(NamedModelAbstractBase):
@@ -267,7 +287,10 @@ class CaptiveFate(NamedModelAbstractBase):
     pass
 
 class CaptiveStatus(NamedModelAbstractBase):
-    pass
+
+    class Meta:
+        verbose_name = "Captive status"
+        verbose_name_plural = "Captive statuses"
 
 
 # TODO: this model will replace resources.AfricanName
@@ -293,7 +316,7 @@ class Enslaved(models.Model):
     age = models.IntegerField(null=True, db_index=True)
     gender = models.IntegerField(null=True, db_index=True)
     height = models.DecimalField(null=True, decimal_places=2, max_digits=6, verbose_name="Height in inches", db_index=True)
-    skin_color = models.IntegerField(null=True, db_index=True)
+    skin_color = models.CharField(max_length=100, null=True, db_index=True)
     language_group = models.ForeignKey(LanguageGroup, null=True,
                                        on_delete=models.CASCADE,
                                        db_index=True)
@@ -431,22 +454,22 @@ _name_fields = ['documented_name', 'name_first', 'name_second', 'name_third']
 _modern_name_fields = ['modern_name']
 
 
-class ManyToManyHelper:
+class MultiValueHelper:
     """
-    This helper uses the GROUP_CONCAT function to fetch many to many
-    relationship values as a single string value for the query and
-    supports mapping this single string back to a structure
-    (list of dicts).
+    This helper uses the GROUP_CONCAT function to fetch multiple values as a
+    single string value for the query and supports mapping this single string
+    back to a structure (list of dicts, or list of flat values if only one field
+    mapping is used).
     """
 
     _FIELD_SEP = "#@@@#"
     _GROUP_SEP = "@###@"
     _FIELD_SEP_VALUE = Value(_FIELD_SEP)
 
-    def __init__(self, projected_name, model, fk_name, **field_mappings):
+    def __init__(self, projected_name, m2m_connection_model, fk_name, **field_mappings):
         self.field_mappings = field_mappings
         self.projected_name = projected_name
-        self.model = model
+        self.model = m2m_connection_model
         self.fk_name = fk_name
 
     def adapt_query(self, q):
@@ -458,18 +481,17 @@ class ManyToManyHelper:
         in a related row.
         """
         fields_concatenated = []
-        for field_path in self.field_mappings.values():
-            fields_concatenated.append(F(field_path))
+        for field_map in self.field_mappings.values():
+            fields_concatenated.append(F(field_map) if isinstance(field_map, str) else field_map)
             fields_concatenated.append(self._FIELD_SEP_VALUE)
         # Drop the last entry which is a field separator.
         fields_concatenated.pop()
-        # TODO (Django upgrade): it is possible that this can be simplified using
-        # a specialized GroupConcat expression from newer Django versions.
         group_concat_field = Func(
-            Concat(*fields_concatenated) if len(fields_concatenated) > 1 else fields_concatenated[0],
-            # This empty value is needed so that the ORM produces the right syntax for GROUP_CONCAT.
-            Value(""),
-            arg_joiner=" SEPARATOR '" + self._GROUP_SEP + "'",
+            Concat(*fields_concatenated, output_field=TextField()) if len(fields_concatenated) > 1 else fields_concatenated[0],
+            # This value and the arg_joiner is needed so that the ORM produces the right syntax
+            # for GROUP_CONCAT(CONCAT(<FieldsToConcatenate>) SEPARATOR <quoted _GROUP_SEP>).
+            Value(self._GROUP_SEP),
+            arg_joiner=" SEPARATOR ",
             function='GROUP_CONCAT')
         sub_query = self.model.objects.filter(**{ self.fk_name: OuterRef('pk') }) \
             .annotate(group_concat_field=group_concat_field) \
@@ -480,13 +502,14 @@ class ManyToManyHelper:
         """
         Produce an iterable of dicts by parsing the field produced by this helper.
         """
-        if value is None:
-            return
         flen = len(self.field_mappings)
+        if value is None or flen == 0:
+            return
         for item in value.split(self._GROUP_SEP):
             values = item.split(self._FIELD_SEP)
             if len(values) == flen:
-                yield { name: values[index] for (index, name) in enumerate(self.field_mappings.keys()) }
+                # Return a dict when multiple values are mapped otherwise return just the value.
+                yield { name: values[index] for (index, name) in enumerate(self.field_mappings.keys()) } if flen > 1 else values[0]
 
     def patch_row(self, row):
         """
@@ -496,6 +519,15 @@ class ManyToManyHelper:
         """
         if self.projected_name in row:
             row[self.projected_name] = list(self.parse_grouped(row[self.projected_name]))
+        else:
+            row[self.projected_name] = []
+        return row
+
+
+class NullIf(Func):
+    # TODO (Django update): this is implemented in latest version of Django...
+    function = 'NULLIF'
+    arity = 2
 
 
 class EnslavedSearch:
@@ -506,8 +538,19 @@ class EnslavedSearch:
     SOURCES_LIST = "sources_list"
     ENSLAVERS_LIST = "enslavers_list"
 
-    sources_helper = ManyToManyHelper(SOURCES_LIST, EnslavedSourceConnection, 'enslaved_id', text_ref="text_ref", full_ref="source__full_ref")
-    enslavers_helper = ManyToManyHelper(ENSLAVERS_LIST, EnslavedInRelation, 'enslaved_id', enslaver_name="transaction__enslavers__enslaver_alias__alias", date="transaction__date")
+    sources_helper = MultiValueHelper(
+        SOURCES_LIST,
+        EnslavedSourceConnection,
+        'enslaved_id',
+        text_ref="text_ref",
+        full_ref="source__full_ref")
+    enslavers_helper = MultiValueHelper(
+        ENSLAVERS_LIST,
+        EnslavedInRelation,
+        'enslaved_id',
+        enslaver_name="transaction__enslavers__enslaver_alias__alias",
+        relation_date="transaction__date",
+        enslaver_role="transaction__enslavers__role")
 
     def __init__(self,
                  enslaved_dataset=None,
@@ -526,7 +569,8 @@ class EnslavedSearch:
                  enslaved_id=None,
                  source=None,
                  order_by=None,
-                 voyage_dataset=None):
+                 voyage_dataset=None,
+                 skin_color=None):
         """
         Search the Enslaved database. If a parameter is set to None, it will
         not be included in the search.
@@ -558,6 +602,7 @@ class EnslavedSearch:
                 'columnName': 'NAME', 'direction': 'ASC or DESC' }.
                 Note that if the search is fuzzy, then the fallback value of
                 order_by is the ranking of the fuzzy search.
+        @param: skin_color a textual description for skin color (Racial Descriptor)
         """
         self.enslaved_dataset = enslaved_dataset
         self.searched_name = searched_name
@@ -576,6 +621,7 @@ class EnslavedSearch:
         self.source = source
         self.order_by = order_by
         self.voyage_dataset = voyage_dataset
+        self.skin_color = skin_color
 
     def get_order_for_field(self, field):
         if isinstance(self.order_by, list):
@@ -590,16 +636,14 @@ class EnslavedSearch:
         representing an Enslaved record.
         @param: fields A list of fields that are fetched.
         """
-        q = Enslaved.objects \
-            .select_related('language_group') \
-            .select_related('voyage__voyage_dates') \
-            .select_related('voyage__voyage_ship') \
-            .select_related('voyage__voyage_itinerary__int_first_port_dis') \
-            .select_related('voyage__voyage_itinerary_'
-                            '_imp_principal_place_of_slave_purchase') \
-            .select_related('voyage__voyage_itinerary_'
-                            '_imp_principal_port_slave_dis') \
-            .select_related('register_country')
+        # For performance reasons we detect all the fields that are related to
+        # the Enslaved model and force the ORM to select them in the query
+        # (otherwise, they would need to be fetched by separate queries). We use
+        # the convention of double underscores in related field names to detect
+        # those fields and extract only the part that needs to be passed to
+        # select_related().
+        related = list({f[:i] for (f, i) in [(f, f.rfind('__')) for f in fields] if i > 0})
+        q = Enslaved.objects.select_related(*related)
 
         ranking = None
         is_fuzzy = False
@@ -614,6 +658,8 @@ class EnslavedSearch:
                 # Perform a fuzzy search on our cached names.
                 NameSearchCache.load()
                 fuzzy_ids = NameSearchCache.search(self.searched_name)
+                if len(fuzzy_ids) == 0:
+                    return []
                 ranking = {x[1]: x[0] for x in enumerate(fuzzy_ids)}
                 q = q.filter(pk__in=fuzzy_ids)
                 is_fuzzy = True
@@ -643,8 +689,8 @@ class EnslavedSearch:
             q = q.filter(
                 post_disembark_location__pk__in=self.post_disembark_location)
         if self.source:
-            qmask = Q(sources_conn__text_ref__contains=self.source)
-            qmask |= Q(sources__full_ref__contains=self.source)
+            qmask = Q(sources_conn__text_ref__icontains=self.source)
+            qmask |= Q(sources__full_ref__icontains=self.source)
             q = q.filter(qmask)
         if self.voyage_id:
             q = q.filter(voyage__pk__range=self.voyage_id)
@@ -685,8 +731,7 @@ class EnslavedSearch:
                 is_desc = x['direction'].lower() == 'desc'
                 nulls_last = True
                 order_field = F(col_name)
-                empty_string_field_min_char_len = (
-                    _special_empty_string_fields.get(col_name))
+                empty_string_field_min_char_len = _special_empty_string_fields.get(col_name)
                 if empty_string_field_min_char_len:
                     nulls_last = True
                     # Add a "length > min_char_len_for_field" field and sort it
@@ -729,10 +774,10 @@ class EnslavedSearch:
                     names_concat = [names_sep] * \
                         (2 * len(sorted_name_fields) - 1)
                     names_concat[0::2] = sorted_name_fields
-                    # We now properly handle
+                    # We now properly handle empty/null values in sorting.
                     fallback_name_val = Value('AAAAA' if is_desc else 'ZZZZZ')
                     expressions = [
-                        Coalesce(F(name_field),
+                        Coalesce(NullIf(NullIf(F(name_field), Value('')), Value('?')),
                                  fallback_name_val,
                                  output_field=CharField())
                         for name_field in sorted_name_fields
@@ -770,15 +815,19 @@ class EnslavedSearch:
             else:
                 q = q.order_by('enslaved_id')
 
+        if self.skin_color:
+            q = q.filter(skin_color__icontains=self.skin_color)
+
         if self.SOURCES_LIST in fields:
             q = self.sources_helper.adapt_query(q)
         if self.ENSLAVERS_LIST in fields:
             q = self.enslavers_helper.adapt_query(q)
 
+        q = q.values(*fields)
+
         if settings.DEBUG:
             print(q.query)
 
-        q = q.values(*fields)
         if is_fuzzy:
             # Convert the QuerySet to a concrete list and include the ranking
             # as a member of each object in that list.

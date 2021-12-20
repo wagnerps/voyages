@@ -1,7 +1,5 @@
 from __future__ import print_function, unicode_literals
 
-import itertools
-import re
 from builtins import input, next, str
 
 from django.core.management.base import BaseCommand
@@ -16,7 +14,7 @@ from voyages.apps.voyage.models import (BroadRegion, LinkedVoyages,
                                         Resistance, RigOfVessel, SlavesOutcome,
                                         TonType, VesselCapturedOutcome, Voyage,
                                         VoyageCaptain, VoyageCaptainConnection,
-                                        VoyageCrew, VoyageDataset, VoyageDates,
+                                        VoyageCrew, VoyageDates,
                                         VoyageGroupings, VoyageItinerary,
                                         VoyageOutcome, VoyageShip,
                                         VoyageShipOwner,
@@ -493,7 +491,7 @@ class Command(BaseCommand):
                         in_cd_room = '1'
                     voyage.voyage_in_cd_rom = in_cd_room == '1'
                     voyage.voyage_groupings = rh.get_by_value(VoyageGroupings, 'xmimpflag')
-                    voyage.dataset = rh.cint('dataset', False)
+                    voyage.dataset = rh.cint('dataset', allow_null=False)
                     intra_american = voyage.dataset == 1
                     counts[voyage.dataset] = counts.get(voyage.dataset, 0) + 1
                     ships.append(row_to_ship(rh, voyage))

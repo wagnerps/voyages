@@ -113,13 +113,15 @@ var pastContribute = new Vue({
                 $.each(this.language_groups.value.searchTerm, function(key, value){
                     contrib_languages.push({
                         ethnicity_id: "1",
-                        lang_group_id: value,
+                        lang_group_id: value.slice(value.indexOf('-') + 1),
                     });
                 });
             } else {
+                var value = this.language_groups.value.searchTerm;
+                value = value.slice(value.indexOf('-') + 1);
                 contrib_languages.push({
                     ethnicity_id: "1",
-                    lang_group_id: this.language_groups.value.searchTerm,
+                    lang_group_id: value,
                 });
             }
 
@@ -432,7 +434,7 @@ $(function(){
       mymap.invalidateSize();
     });
 
-    L.tileLayer('https://{s}.tile.jawg.io/jawg-sunny/{z}/{x}/{y}{r}.png?access-token={accessToken}', {
+    L.tileLayer('https://{s}.tile.jawg.io/jawg-sunny/{z}/{x}/{y}{r}.png?lang=en&access-token={accessToken}', {
         attribution: '<a href="http://jawg.io" title="Tiles Courtesy of Jawg Maps" target="_blank">&copy; <b>Jawg</b>Maps</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         minZoom: 0,
         maxZoom: 22,
